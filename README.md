@@ -66,8 +66,8 @@ and `MaxKernel` stay as they are. The full corrected entry is in [`patch-entry.p
 ### With the script
 
 ```bash
-sudo ./apply_pat_wc.sh /Volumes/EFI/EFI/OC/config.plist on     # apply (backs up config.plist first)
-sudo ./apply_pat_wc.sh /Volumes/EFI/EFI/OC/config.plist off    # revert to the original AMD_Vanilla bytes
+sudo bash apply_pat_wc.sh /Volumes/EFI/EFI/OC/config.plist on     # apply (backs up config.plist first)
+sudo bash apply_pat_wc.sh /Volumes/EFI/EFI/OC/config.plist off    # revert to the original AMD_Vanilla bytes
 ```
 
 The script finds the entry by its `Find`/`Mask` bytes, not by index, and only touches it when the current `Replace`
