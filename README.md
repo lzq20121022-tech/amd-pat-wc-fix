@@ -76,6 +76,29 @@ is one of the two known values. Reboot to apply.
 If something goes wrong, boot Recovery, mount the EFI partition (`diskutil mount disk0sX`) and copy the
 `config.plist.backup-*` file back.
 
+## Compared with the other AMD_Vanilla PAT patch
+
+AMD_Vanilla also ships Shaneee's PAT patch. Its README says it "will increase GPU performance on AMD GPUs but can stop
+NVIDIA GPUs from booting" and may cause HDMI/DisplayPort audio issues. The PAT values explain why:
+
+```
+             PA7  PA6  PA5  PA4  PA3  PA2  PA1  PA0
+Algrey        UC   UC-  WC   WB   UC   UC-  WC   WB     write-combining lost (this bug)
+Shaneee       WB   WB   WB   WB   WB   WB   WB   WB     everything cacheable, including MMIO
+this fix      UC   WC   WC   WB   UC   UC-  WC   WB     what XNU intends: PA6 = WC, UC stays UC
+```
+
+## Older macOS (10.13 – 14)
+
+AMD_Vanilla's `algrey | _mtrr_update_action | fix PAT | 10.13+` entry has the same problem and the same one-byte fix:
+`Replace` `b977020000 b806010700 ba06010700 0f1f4000` (`uXcCAAC4BgEHALoGAQcADx9AAA==`) becomes
+`b977020000 b806010700 ba06010100 0f1f4000` (`uXcCAAC4BgEHALoGAQEADx9AAA==`). The script only handles the 15.0+ entry;
+edit the older one by hand. Untested, because no 10.13–14 system was available.
+
+## Upstream
+
+Proposed to AMD_Vanilla as opt-in entries in [AMD-OSX/AMD_Vanilla#216](https://github.com/AMD-OSX/AMD_Vanilla/pull/216).
+
 ## Checking it
 
 macOS gives user space no way to read the PAT MSR, so check the effect:
@@ -116,5 +139,7 @@ AMD 黑苹果常用的 OpenCore 内核补丁 `Algrey / Zormeister | _mtrr_update
 | WindowServer 合成占 GPU | 20% | 9% |
 
 拖窗口从明显卡顿变成流畅。用法见上面的英文部分：脚本 `apply_pat_wc.sh` 会先备份配置，`on` 是应用修复，`off` 是改回原值，重启生效。
+
+原项目里的另一个 PAT 补丁（Shaneee 的）把 8 项全部设成"可缓存"，硬件寄存器也被缓存了，所以原项目说明里写着它可能让 N 卡开不了机、HDMI/DP 音频出问题。本修复只把第 6 项改回写合并，其余不动。macOS 10.13–14 用的旧版补丁有同样的问题，同样改一个字节（见上面英文部分），脚本只处理 15.0+ 那一条。已向原项目提交 PR：[AMD-OSX/AMD_Vanilla#216](https://github.com/AMD-OSX/AMD_Vanilla/pull/216)。
 
 原补丁作者是 AMD_Vanilla 的 algrey 和 Zormeister，本仓库只修正了写合并所在的那一项。
