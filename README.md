@@ -7,6 +7,8 @@ Hackintosh using this patch, **all write-combined (WC) memory mappings are silen
 
 Changing one byte of the patch's `Replace` data puts write-combining back where macOS expects it.
 
+> **NVIDIA GPUs only.** On AMD Radeon GPUs this change causes GPU hangs. See [Who is affected](#who-is-affected).
+
 Measured on a Ryzen 7 9800X3D + RTX 5080 (macOS 26, NullMoth NVIDIA driver), same machine, before / after:
 
 | | before | after |
@@ -24,7 +26,21 @@ Window resizing went from visibly stuttering to smooth.
 Anyone booting macOS on an AMD CPU with the AMD_Vanilla `_mtrr_update_action | Fix PAT` kernel patch enabled
 (MinKernel 24.0.0 / macOS 15+ in current AMD_Vanilla), whose GPU driver uses write-combined CPU mappings.
 - Verified: NVIDIA RTX 5080 with the NullMoth driver.
-- Very likely: AMD Radeon GPUs, whose macOS drivers also map VRAM write-combined. Not tested; reports welcome.
+- **Not for AMD Radeon.** DrogaBox tested it on an RX 6800 XT (Navi 21), Ryzen 9 5900XT, macOS 26.7.1: constant GPU
+  hangs (20 GPU resets in 9 minutes), gone again on Shaneee's patch. On Radeon it also gives no speedup: the macOS Radeon
+  driver has no write-combined VRAM path. Details and analysis:
+  [AMD-OSX/AMD_Vanilla#216](https://github.com/AMD-OSX/AMD_Vanilla/pull/216).
+
+### Why it hangs Radeon GPUs (DrogaBox's analysis)
+
+The CPU's hardware prefetcher crosses 4 KB page boundaries. After a cached access to one page, the first few dozen lines
+of the next physical page can sit in the CPU cache. If that next page is RAM mapped write-combined, WC stores do not
+update or drop the cached copy, and a GPU that snoops the CPU cache reads the stale line. On Navi 21 this leaves the GFX
+ring stuck in the middle of an indirect buffer. His workaround is an extra kernel patch that keeps RAM pages write-back,
+so that only device memory is write-combined. See the PR thread.
+
+On NVIDIA (Zen 5, RTX 5080) the fix has run for days without a GPU reset. The same mechanism could still affect any
+write-combined RAM that the GPU reads with snooping, so treat it as experimental.
 
 ## The bug
 
@@ -139,6 +155,12 @@ AMD 黑苹果常用的 OpenCore 内核补丁 `Algrey / Zormeister | _mtrr_update
 | WindowServer 合成占 GPU | 20% | 9% |
 
 拖窗口从明显卡顿变成流畅。用法见上面的英文部分：脚本 `apply_pat_wc.sh` 会先备份配置，`on` 是应用修复，`off` 是改回原值，重启生效。
+
+**注意：只适用于 NVIDIA 显卡，Radeon 不能用。** DrogaBox 在 RX 6800 XT（Navi 21）上实测：只改这一项会让显卡反复卡死（9 分钟重置 20 次）。
+
+原因是 CPU 预取器会把下一页内存的开头几十行提前读进缓存；那一页如果是被设成写合并的普通内存，写合并的写入不会更新缓存里的旧副本，会探查 CPU 缓存的显卡就读到了旧数据。Radeon 上这个改动也没有提速。
+
+NVIDIA 上已经稳定运行多天，但这一机制理论上同样可能影响，请把它当作实验性修改。
 
 原项目里的另一个 PAT 补丁（Shaneee 的）把 8 项全部设成"可缓存"，硬件寄存器也被缓存了，所以原项目说明里写着它可能让 N 卡开不了机、HDMI/DP 音频出问题。本修复只把第 6 项改回写合并，其余不动。macOS 10.13–14 用的旧版补丁有同样的问题，同样改一个字节（见上面英文部分），脚本只处理 15.0+ 那一条。已向原项目提交 PR：[AMD-OSX/AMD_Vanilla#216](https://github.com/AMD-OSX/AMD_Vanilla/pull/216)。
 
